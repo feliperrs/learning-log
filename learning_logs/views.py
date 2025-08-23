@@ -1,24 +1,33 @@
 from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from .models import Topic, Entry
 from .forms import TopicForm, EntryForm
+
 
 def index(request):
     """A pagina inicial para o registro de aprendizagem"""
     return render(request, 'learning_logs/index.html')
 
+@login_required
 def topics(request):
     """Mostra todos os topicos"""
-    topics = Topic.objects.order_by('date_added')
+    topics = Topic.objects.filter(owner=request.user).order_by('date_added')
     context = {'topics' : topics}
     return render(request, 'learning_logs/topics.html', context)
 
+@login_required
 def topic(request, topic_id):
     """Mostra um unico topico e todas as suas entradas"""
     topic = Topic.objects.get(id=topic_id)
+    # Verifica se o topico pertence ao usuario atual
+    if topic.owner != request.user:
+        raise Http404
     entries = topic.entry_set.order_by('date_added')
     context = {'topic' : topic, 'entries' : entries}
     return render(request, 'learning_logs/topic.html' , context)
 
+@login_required
 def new_topic(request):
     """Adiciona um topico novo"""
     if request.method != 'POST':
@@ -28,13 +37,16 @@ def new_topic(request):
         # Dados POST enviados; processa os dados
         form = TopicForm(data=request.POST)
         if form.is_valid():
-            form.save()
+            new_topic = form.save(commit=False)
+            new_topic.owner = request.user
+            new_topic.save()
             return redirect('learning_logs:topics')
     
     # Exibe um formulario em branco ou invalido
     context = {'form' : form}
     return render(request, 'learning_logs/new_topic.html', context)
 
+@login_required
 def new_entry(request, topic_id):
     """Adiciona uma entrada nova para um topico especifico"""
     topic = Topic.objects.get(id=topic_id)
@@ -55,10 +67,13 @@ def new_entry(request, topic_id):
     context = {'topic' : topic, 'form' : form}
     return render(request, 'learning_logs/new_entry.html', context)
 
+@login_required
 def edit_entry(request, entry_id):
     """Edita uma entrada existente"""
     entry = Entry.objects.get(id=entry_id)
     topic = entry.topic
+    if topic.owner != request.user:
+        raise Http404
     if request.method != 'POST':
         # Requisicao inicial; pré-preenche formulario com a entrada atual
         form = EntryForm(instance=entry)
